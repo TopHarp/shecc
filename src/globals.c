@@ -960,7 +960,7 @@ void add_insn(block_t *block,
     bb->scope = block;
 
     insn_t *n = arena_alloc(INSN_ARENA, sizeof(insn_t));
-    n->opcode = op;
+    n->opcode = op;     ///< 指令
     n->rd = rd;
     n->rs1 = rs1;
     n->rs2 = rs2;
@@ -973,10 +973,10 @@ void add_insn(block_t *block,
     if (!bb->insn_list.head)
         bb->insn_list.head = n;
     else
-        bb->insn_list.tail->next = n;
+        bb->insn_list.tail->next = n;  ///< 尾部的next是当前节点
 
-    n->prev = bb->insn_list.tail;
-    bb->insn_list.tail = n;
+    n->prev = bb->insn_list.tail;       ///< 当前节点的上一个节点是链表尾部
+    bb->insn_list.tail = n;           ///< 更新链表尾部为当前节点
 }
 
 strbuf_t *strbuf_create(int init_capacity)

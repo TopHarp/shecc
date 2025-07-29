@@ -351,12 +351,17 @@ typedef struct {
     char *elements;
 } strbuf_t;
 
+/**
+ * @brief Phase-2 IR definition
+ * Phase-2 IR 是编译器优化阶段使用的一种中级中间表示（Intermediate Representation），
+ * 介于前端生成的初始 IR（如抽象语法树 AST）和低级 IR（如 LLVM IR 或机器相关的 RTL）之间
+ */
 /* phase-2 IR definition */
 struct ph2_ir {
-    opcode_t op;
-    int src0;
-    int src1;
-    int dest;
+    opcode_t op;     ///< 三地址操作码 操作符
+    int src0;       ///< 第一个源操作数
+    int src1;       ///< 第二个源操作数
+    int dest;       ///< 目标操作数
     char func_name[MAX_VAR_LEN];
     basic_block_t *next_bb;
     basic_block_t *then_bb;
@@ -407,19 +412,37 @@ struct phi_operand {
 
 typedef struct phi_operand phi_operand_t;
 
+/**
+ * @brief Instruction definition 第一遍原始指令 IR指令链表
+ * This structure represents a single instruction in the
+ * intermediate representation (IR) of the compiler.
+ * It contains fields for the operation code (opcode),
+ * the destination register (rd),
+ * the source registers (rs1, rs2),
+ * the size of the operation (sz),
+ * and a flag indicating whether the instruction is useful 用于死代码消除
+ * (used in dead code elimination).
+ * It also includes a pointer to the basic block   belong_to
+ * to which the instruction belongs,
+ * a string representation of the instruction,
+ * and a linked list of phi operands
+ * for phi nodes in the control flow graph.  存储 Phi 指令的操作数（用于 SSA 形式的静态单赋值优化） ssa 静态单赋值
+ * next prev 链表
+ * 
+*/
 struct insn {
     struct insn *next;
     struct insn *prev;
     int idx;
     opcode_t opcode;
-    var_t *rd;
+    var_t *rd;        ///< 操作数：目标寄存器（rd）和源寄存器（rs1, rs2），支持三地址码形式
     var_t *rs1;
     var_t *rs2;
     int sz;
     bool useful; /* Used in DCE process. Set true if instruction is useful. */
-    basic_block_t *belong_to;
-    phi_operand_t *phi_ops;
-    char str[64];
+    basic_block_t *belong_to;   ///< 指向所属的基本块（控制流图节点）
+    phi_operand_t *phi_ops;     ///< 存储 Phi 指令的操作数（用于 SSA 形式的静态单赋值优化）
+    char str[64];               ///< 命令的字符串表示形式，用于调试和输出
 };
 
 typedef struct {
@@ -452,43 +475,60 @@ typedef struct {
     symbol_t *tail;
 } symbol_list_t;
 
+/**
+ * 结构体定义了编译器控制流分析中的核心数据结构——基本块（Basic Block），
+ * 它是控制流图（CFG）的核心节点
+ * 支配（Dominate）：在控制流图（CFG）中，节点 d 支配节点 n，当且仅当从入口到 n 的所有路径都必须经过 d。
+ * 支配边界 DF(d)：所有满足以下条件的节点 b 的集合：
+ * 存在一个从 d 到 b 的前驱 a，使得 d 支配 a 但不支配 b。
+ * 直观地说：b 是“第一个”不被 d 支配的节点，因此 b 是 d 的支配边界。
+ * 
+ * 基本块（Basic Block）
+ * Basic Block（基本块）是编译器控制流分析和优化的核心概念，表示程序中的一个线性指令序列，具有以下关键特性：
+ * 1. 核心定义
+ * 单入口：除块的第一条指令外，没有其他指令是跳转目标。
+ * 单出口：除块的最后一条指令外，其他指令不会导致控制流转移。
+ * 无分支：块内无跳转、循环或条件语句（仅最后一条指令可以是分支指令）。
+ * 
+ * Basic Block 是编译器优化的原子单位，通过简化控制流复杂性，为数据流分析、指令调度和代码生成提供高效的基础结构。
+ */
 struct basic_block {
-    insn_list_t insn_list;
-    ph2_ir_list_t ph2_ir_list;
-    bb_connection_t prev[MAX_BB_PRED];
+    insn_list_t insn_list;       ///< 原始指令链表 中间表示
+    ph2_ir_list_t ph2_ir_list;   ///< Phase-2 IR 指令链表 优化后指令
+    bb_connection_t prev[MAX_BB_PRED];   ///< 前驱基本块列表，最多支持 128 个前驱
     /* Used in instruction dumping when ir_dump is enabled. */
-    char bb_label_name[MAX_VAR_LEN];
-    struct basic_block *next;  /* normal BB */
-    struct basic_block *then_; /* conditional BB */
-    struct basic_block *else_;
-    struct basic_block *idom;
-    struct basic_block *r_idom;
-    struct basic_block *rpo_next;
-    struct basic_block *rpo_r_next;
-    var_t *live_gen[MAX_ANALYSIS_STACK_SIZE];
-    int live_gen_idx;
-    var_t *live_kill[MAX_ANALYSIS_STACK_SIZE];
-    int live_kill_idx;
-    var_t *live_in[MAX_ANALYSIS_STACK_SIZE];
-    int live_in_idx;
-    var_t *live_out[MAX_ANALYSIS_STACK_SIZE];
-    int live_out_idx;
-    int rpo;
-    int rpo_r;
-    struct basic_block *DF[64];
-    struct basic_block *RDF[64];
-    int df_idx;
-    int rdf_idx;
-    int visited;
-    bool useful; /* indicate whether this BB contains useful instructions */
-    struct basic_block *dom_next[64];
-    struct basic_block *dom_prev;
-    struct basic_block *rdom_next[256];
-    struct basic_block *rdom_prev;
-    func_t *belong_to;
-    block_t *scope;
-    symbol_list_t symbol_list; /* variable declaration */
-    int elf_offset;
+    char bb_label_name[MAX_VAR_LEN];     ///< 基本块标签名称 （用于调试输出）
+    struct basic_block *next;  /* normal BB */       ///< 下一个基本块（正常顺序执行） 顺序后继
+    struct basic_block *then_; /* conditional BB */  ///< 条件分支 真then/假else分支  条件后继
+    struct basic_block *else_;                       ///< 条件分支 真then/假else分支  条件后继
+    struct basic_block *idom;           ///< 立即支配的基本块（IDOM）直接支配者（Immediate Dominator）父节点
+    struct basic_block *r_idom;         ///< 逆后序遍历的立即支配者（R_IDOM）
+    struct basic_block *rpo_next;       ///< 逆后序遍历的下一个基本块
+    struct basic_block *rpo_r_next;     ///< 逆后序遍历的下一个基本块（反向）
+    var_t *live_gen[MAX_ANALYSIS_STACK_SIZE];   ///< 活跃变量生成列表  
+    int live_gen_idx;                           ///< 活跃变量生成索引
+    var_t *live_kill[MAX_ANALYSIS_STACK_SIZE];  ///< 活跃变量消除列表
+    int live_kill_idx;                          ///< 活跃变量消除索引
+    var_t *live_in[MAX_ANALYSIS_STACK_SIZE];    ///< 入口活跃变量：进入块时活跃的变量
+    int live_in_idx;                            ///< 入口活跃变量索引    
+    var_t *live_out[MAX_ANALYSIS_STACK_SIZE];   ///< 出口活跃变量：离开块时活跃的变量
+    int live_out_idx;                           ///< 出口活跃变量索引
+    int rpo;                                    ///< 逆后序遍历索引
+    int rpo_r;                              ///< 逆后序遍历反向索引
+    struct basic_block *DF[64];             ///< 支配边界（Dominance Frontier）：用于构建 SSA 形式 支配前驱（DF）列表，最多支持 64 个支配前驱
+    struct basic_block *RDF[64];            ///< 逆支配边界（Reverse Dominance Frontier）
+    int df_idx;                  ///< 支配边界索引  
+    int rdf_idx;            ///< 逆支配边界索引
+    int visited;            ///< 是否访问过（用于遍历和分析）
+    bool useful; /* indicate whether this BB contains useful instructions */  ///< 是否包含有用的指令
+    struct basic_block *dom_next[64];       ///< 支配子节点列表（最多支持 64 个支配子节点） 支配树结构
+    struct basic_block *dom_prev;           ///< 支配前驱节点（支配树中的父节点）
+    struct basic_block *rdom_next[256];     ///< 逆支配子节点列表（最多支持 256 个逆支配子节点） 逆支配树结构
+    struct basic_block *rdom_prev;      ///< 逆支配前驱节点（逆支配树中的父节点）
+    func_t *belong_to;                  ///< 所属函数（Function）指针
+    block_t *scope;                     ///< 所属作用域（Block）指针 （如循环或条件块）
+    symbol_list_t symbol_list; /* variable declaration */ ///< 符号列表（变量声明）符号表 块内局部变量声明
+    int elf_offset;         ///< ELF 偏移量（用于代码生成时的符号定位）
 };
 
 struct ref_block {
@@ -496,26 +536,27 @@ struct ref_block {
     struct ref_block *next;
 };
 
+
 /* Syntactic representation of func, combines syntactic details (e.g., return
  * type, parameters) with SSA-related information (e.g., basic blocks, control
  * flow) to support parsing, analysis, optimization, and code generation.
  */
 struct func {
     /* Syntatic info */
-    var_t return_def;
-    var_t param_defs[MAX_PARAMS];
-    int num_params;
-    int va_args;
-    int stack_size; /* stack always starts at offset 4 for convenience */
+    var_t return_def;                ///< 返回值定义
+    var_t param_defs[MAX_PARAMS];    ///< 参数定义列表
+    int num_params;                  ///< 参数数量
+    int va_args;                     ///< 可变参数标记：非零表示函数接受可变参数（如 printf）
+    int stack_size; /* stack always starts at offset 4 for convenience */   ///< 栈空间大小：函数局部变量和临时值的总栈偏移(从 4 开始对齐)
 
     /* SSA info */
-    basic_block_t *bbs;
-    basic_block_t *exit;
-    symbol_list_t global_sym_list;
-    int bb_cnt;
-    int visited;
+    basic_block_t *bbs;             ///< 基本块列表（控制流图）指向函数的入口基本块
+    basic_block_t *exit;            ///< 函数退出基本块（通常是 return 语句所在的块） 出口块
+    symbol_list_t global_sym_list;  ///< 全局符号列表（全局变量和函数）符号表 全局变量声明
+    int bb_cnt;                     ///< 基本块计数：函数中基本块的数量
+    int visited;                    ///< 是否访问过（用于遍历和分析）
 
-    struct func *next;
+    struct func *next;              ///< 下一个函数指针（用于函数链表）链表
 };
 
 typedef struct {

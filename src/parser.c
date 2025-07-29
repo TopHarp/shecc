@@ -2809,7 +2809,7 @@ void read_global_decl(block_t *block)
     /* new function, or variables under parent */
     read_full_var_decl(var, 0, 0);
 
-    if (lex_peek(T_open_bracket, NULL)) {
+    if (lex_peek(T_open_bracket, NULL)) {                 ///< 与我CParser::FunctionOrIdentifier结构相同
         /* function */
         func_t *func = add_func(var->var_name, false);
         memcpy(&func->return_def, var, sizeof(var_t));

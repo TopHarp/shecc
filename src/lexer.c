@@ -95,6 +95,8 @@ char peek_char(int offset)
     return SOURCE->elements[SOURCE->size + offset];
 }
 
+///< 词法解析就是这一个函数 只返回token类型
+///< 解析下一个 token 并返回其 token 类型。参数 'aliasing' 用于在标识符 token 上禁用预处理器别名。
 /* Lex next token and returns its token type. Parameter 'aliasing' is used for
  * disable preprocessor aliasing on identifier tokens.
  */
@@ -559,6 +561,7 @@ token_t lex_token_internal(bool aliasing)
     return T_eof;
 }
 
+///< 解析下一个 token 并返回其 token 类型。要在下一个 token 上禁用别名，请使用 'lex_token_internal'.
 /* Lex next token and returns its token type. To disable aliasing on next
  * token, use 'lex_token_internal'.
  */
@@ -577,6 +580,7 @@ void skip_macro_body(void)
     next_token = lex_token();
 }
 
+///< 条件性消费 如果类型匹配，消费该token（读下一个token）
 /* Accepts next token if token types are matched. */
 bool lex_accept_internal(token_t token, bool aliasing)
 {
@@ -588,6 +592,7 @@ bool lex_accept_internal(token_t token, bool aliasing)
     return false;
 }
 
+///< 接受下一个 token如果 token 类型匹配
 /* Accepts next token if token types are matched. To disable aliasing on next
  * token, use 'lex_accept_internal'.
  */
@@ -596,6 +601,7 @@ bool lex_accept(token_t token)
     return lex_accept_internal(token, 1);
 }
 
+///< 偷看下一个 token，如果 token 类型匹配，则将 token 的字面量复制到 value 中。
 /* Peeks next token and copy token's literal to value if token types are
  * matched.
  */
@@ -610,6 +616,7 @@ bool lex_peek(token_t token, char *value)
     return false;
 }
 
+///< 如果下一个token不是给定类型，抛出错误，并继续找下一个token
 /* Strictly match next token with given token type and copy token's literal to
  * value.
  */
@@ -621,6 +628,8 @@ void lex_ident_internal(token_t token, char *value, bool aliasing)
     next_token = lex_token_internal(aliasing);
 }
 
+///< 严格匹配下一个 token 的类型，并将 token 的字面量复制到 value 中。
+///< 如果下一个token不是给定类型，抛出错误，并继续找下一个token 并拷贝字面意思到value
 /* Strictly match next token with given token type and copy token's literal to
  * value. To disable aliasing on next token, use 'lex_ident_internal'.
  */
@@ -629,6 +638,7 @@ void lex_ident(token_t token, char *value)
     lex_ident_internal(token, value, true);
 }
 
+///< 如果下一个token不是给定类型，抛出错误，并继续找下一个token 不拷贝
 /* Strictly match next token with given token type. */
 void lex_expect_internal(token_t token, bool aliasing)
 {
@@ -637,6 +647,7 @@ void lex_expect_internal(token_t token, bool aliasing)
     next_token = lex_token_internal(aliasing);
 }
 
+///< 严格匹配下一个 token 的类型。要在下一个 token 上禁用别名，请使用 'lex_expect_internal'.
 /* Strictly match next token with given token type. To disable aliasing on next
  * token, use 'lex_expect_internal'.
  */
