@@ -484,6 +484,9 @@ void read_defined_macro(void)
     check_def(lookup_alias, true);
 }
 
+/**
+ * 预处理指令处理函数 #define, #include, #undef, #if, #ifdef, #ifndef, #else, #elif, #endif
+ */
 /* read preprocessor directive at each potential positions: e.g., global
  * statement / body statement
  */
@@ -654,16 +657,24 @@ bool read_preproc_directive(void)
 
 void read_parameter_list_decl(func_t *func, int anon);
 
-void read_inner_var_decl(var_t *vd, int anon, int is_param)
+///< anon 入参？？
+/**
+ * 读取内部变量声明
+ * 解析一个变量（或函数指针）声明的核心部分，解析结果写入传给它的 var_t *vd 结构体里。
+ * vd	var_t *	输出型参数。解析出的类型、名字、维度、初值等都写进这个结构体。
+ * anon	int（布尔）	是否为“匿名”声明。
+ * is_param	int（布尔）	是否正在解析函数形参。
+ */
+void read_inner_var_decl(var_t *vd, int anon, int is_param)     
 {
     vd->init_val = 0;
     vd->is_ptr = 0;
 
-    while (lex_accept(T_asterisk))
+    while (lex_accept(T_asterisk))          ///< 是否为指针声明 统计指针层级
         vd->is_ptr++;
 
     /* is it function pointer declaration? */
-    if (lex_accept(T_open_bracket)) {
+    if (lex_accept(T_open_bracket)) {           ///< 带括号 函数指针
         func_t func;
         lex_expect(T_asterisk);
         lex_ident(T_identifier, vd->var_name);
@@ -671,7 +682,7 @@ void read_inner_var_decl(var_t *vd, int anon, int is_param)
         read_parameter_list_decl(&func, 1);
         vd->is_func = true;
     } else {
-        if (anon == 0) {
+        if (anon == 0) {                            ///< 是否为匿名声明
             lex_ident(T_identifier, vd->var_name);
             if (!lex_peek(T_open_bracket, NULL) && !is_param) {
                 if (vd->is_global) {
@@ -679,18 +690,18 @@ void read_inner_var_decl(var_t *vd, int anon, int is_param)
                 }
             }
         }
-        if (lex_accept(T_open_square)) {
+        if (lex_accept(T_open_square)) {        ///< 是否为数组声明
             char buffer[10];
 
             /* array with size */
-            if (lex_peek(T_numeric, buffer)) {
-                vd->array_size = read_numeric_constant(buffer);
+            if (lex_peek(T_numeric, buffer)) {                      ///< []中有数字 定长数组
+                vd->array_size = read_numeric_constant(buffer);     ///< 读常量数值
                 lex_expect(T_numeric);
             } else {
                 /* array without size:
                  * regarded as a pointer although could be nested
                  */
-                vd->is_ptr++;
+                vd->is_ptr++;                                      ///< []中没数字 数组指针
             }
             lex_expect(T_close_square);
         } else {
@@ -2809,7 +2820,7 @@ void read_global_decl(block_t *block)
     /* new function, or variables under parent */
     read_full_var_decl(var, 0, 0);
 
-    if (lex_peek(T_open_bracket, NULL)) {                 ///< 与我CParser::FunctionOrIdentifier结构相同
+    if (lex_peek(T_open_bracket, NULL)) {                 ///< 与我CParser::FunctionOrIdentifier结构相同.  '(' is function
         /* function */
         func_t *func = add_func(var->var_name, false);
         memcpy(&func->return_def, var, sizeof(var_t));
@@ -2851,7 +2862,7 @@ void read_global_statement(void)
     char token[MAX_ID_LEN];
     block_t *block = GLOBAL_BLOCK; /* global block */
 
-    if (lex_accept(T_struct)) {
+    if (lex_accept(T_struct)) {                 ///< 结构体
         int i = 0, size = 0;
 
         lex_ident(T_identifier, token);
@@ -2867,11 +2878,11 @@ void read_global_statement(void)
         lex_expect(T_open_curly);
         do {
             var_t *v = &type->fields[i++];
-            read_full_var_decl(v, 0, 1);
+            read_full_var_decl(v, 0, 1);        ///< 结构体内变量声明 读一个
             v->offset = size;
             size += size_var(v);
             lex_expect(T_semicolon);
-        } while (!lex_accept(T_close_curly));
+        } while (!lex_accept(T_close_curly));   ///< 结构体内变量 结束
 
         type->size = size;
         type->num_fields = i;
@@ -2959,7 +2970,7 @@ void read_global_statement(void)
             lex_ident(T_identifier, type->type_name);
             lex_expect(T_semicolon);
         }
-    } else if (lex_peek(T_identifier, NULL)) {
+    } else if (lex_peek(T_identifier, NULL)) {              ///< 标识符 
         read_global_decl(block);
     } else
         error("Syntax error in global statement");

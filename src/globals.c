@@ -125,6 +125,7 @@ void arena_block_free(arena_block_t *block)
     free(block);
 }
 
+///< 第一个arena_block_t的创建
 /* Initialize the given arena with initial capacity.
  * @initial_capacity: The initial capacity of the arena. Must be positive.
  *
@@ -141,6 +142,10 @@ arena_t *arena_init(int initial_capacity)
     return arena;
 }
 
+
+/**
+ * 如果申请的size大于当前arena_block的剩余空间，则创建一个新的arena_block。
+ */
 /* Allocate memory from the given arena with given size.
  * The arena may create a new arena block if no space is available.
  * @arena: The arena to allocate memory from. Must not be NULL.
@@ -159,6 +164,7 @@ void *arena_alloc(arena_t *arena, int size)
     /* Align to PTR_SIZE bytes */
     size = (size + PTR_SIZE - 1) & ~(PTR_SIZE - 1);
 
+    ///< 如果申请的size大于当前arena_block的剩余空间，则创建一个新的arena_block
     if (!arena->head || arena->head->offset + size > arena->head->capacity) {
         /* Need a new block: choose capacity = max(DEFAULT_ARENA_SIZE, size) */
         int new_capacity =
@@ -168,6 +174,7 @@ void *arena_alloc(arena_t *arena, int size)
         arena->head = new_block;
     }
 
+    ///< 当前arena_block的剩余空间足够分配size
     void *ptr = arena->head->memory + arena->head->offset;
     arena->head->offset += size;
     return ptr;
@@ -791,6 +798,7 @@ int size_var(var_t *var)
     return size;
 }
 
+///< @synthesize: 标记该函数是否由编译器自动生成。被合成的函数将不会被 SSA 单元进一步分析。
 /* Create a new function and adds it to the function lookup table and function
  * list if it does not already exist, or returns the existing instance if the
  * function already exists.
@@ -858,6 +866,7 @@ basic_block_t *bb_create(block_t *parent)
     return bb;
 }
 
+///< 前驱后继对必须只有一个连接
 /* The pred-succ pair must have only one connection */
 void bb_connect(basic_block_t *pred,
                 basic_block_t *succ,

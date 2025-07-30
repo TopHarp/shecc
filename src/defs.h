@@ -66,6 +66,12 @@
 #define HOST_PTR_SIZE __SIZEOF_POINTER__
 #endif
 
+
+
+/**
+ * arena_t内存池 arena_t中再分arena_block_t
+ * 
+ */
 /* Common data structures */
 typedef struct arena_block {
     char *memory;
@@ -283,12 +289,18 @@ typedef struct use_chain_node {
 typedef struct var var_t;
 typedef struct type type_t;
 
+/**
+ * 变量列表 二级指针
+ */
 typedef struct var_list {
     int capacity;
     int size;
     var_t **elements;
 } var_list_t;
 
+/**
+ * 变量定义
+ */
 struct var {
     type_t *type;
     char var_name[MAX_VAR_LEN];
@@ -315,6 +327,9 @@ struct var {
     bool is_const; /* whether a constant representaion or not */
 };
 
+/**
+ * 宏
+ */
 typedef struct {
     char name[MAX_VAR_LEN];
     bool is_variadic;
@@ -328,13 +343,16 @@ typedef struct {
 
 typedef struct func func_t;
 
+/**
+ * 变量作用域
+ */
 /* block definition */
 struct block {
-    var_list_t locals;
-    struct block *parent;
-    func_t *func;
-    macro_t *macro;
-    struct block *next;
+    var_list_t locals;      ///< 局部变量列表  var_list_t->var_t
+    struct block *parent;   ///< 指向直接外层作用域的 block，形成“作用域链”，便于逐级向上查找标识符
+    func_t *func;           ///< 指向函数定义的指针，若该 block 属于函数，则指向该函数
+    macro_t *macro;         ///< 指向宏定义的指针，若该 block 属于宏，则指向该宏
+    struct block *next;     ///< 指向下一个 block 的指针，用于形成链表结构 同一父作用域下的兄弟 block 链表指针；例如并列的语句块 { ... } { ... }
 };
 
 typedef struct block block_t;
@@ -536,7 +554,10 @@ struct ref_block {
     struct ref_block *next;
 };
 
-
+/**
+ * 函数的语法层表示：将语法细节（如返回类型、形参）与 SSA 相关信息（如基本块、控制流）结合在一起，
+ * 以支持后续的解析、分析、优化和代码生成。
+ */
 /* Syntactic representation of func, combines syntactic details (e.g., return
  * type, parameters) with SSA-related information (e.g., basic blocks, control
  * flow) to support parsing, analysis, optimization, and code generation.
