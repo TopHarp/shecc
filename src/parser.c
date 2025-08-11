@@ -130,11 +130,12 @@ int get_size(var_t *var)
     return var->type->size;
 }
 
+///< 返回操作符优先级
 int get_operator_prio(opcode_t op)
 {
     /* https://www.cs.uic.edu/~i109/Notes/COperatorPrecedenceTable.pdf */
     switch (op) {
-    case OP_ternary:
+    case OP_ternary:    ///< 三目运算符
         return 3;
     case OP_log_or:
         return 4;
@@ -290,6 +291,8 @@ var_t *resize_var(block_t *block, basic_block_t **bb, var_t *from, var_t *to)
     return from;
 }
 
+
+///< 编译期常量折叠计算 具体的数值常量
 int read_numeric_constant(char buffer[])
 {
     int i = 0;
@@ -317,6 +320,7 @@ int read_numeric_constant(char buffer[])
     return value;
 }
 
+///< 编译期常量折叠计算 具体的常量表达式
 int read_constant_expr_operand(void)
 {
     char buffer[MAX_ID_LEN];
@@ -348,6 +352,7 @@ int read_constant_expr_operand(void)
     return -1;
 }
 
+///< 编译期常量折叠计算 编译阶段计算 
 int read_constant_infix_expr(int precedence)
 {
     int lhs, rhs;
@@ -449,11 +454,13 @@ int read_constant_infix_expr(int precedence)
     return lhs;
 }
 
+///< 编译期常量折叠计算 编译阶段计算
 int read_constant_expr(void)
 {
     return read_constant_infix_expr(0);
 }
 
+///< 处理 C 预处理指令的控制流 #if 0 跳过
 /* Skips lines where preprocessor match is false, this will stop once next
  * token is either 'T_cppd_elif', 'T_cppd_else' or 'cppd_endif'.
  */
@@ -735,6 +742,7 @@ void read_partial_var_decl(var_t *vd, var_t *template)
     read_inner_var_decl(vd, 0, 0);
 }
 
+///< 函数参数列表声明
 void read_parameter_list_decl(func_t *func, int anon)
 {
     int vn = 0;
@@ -767,6 +775,7 @@ void read_parameter_list_decl(func_t *func, int anon)
     lex_expect(T_close_bracket);
 }
 
+///< 字符串参数
 void read_literal_param(block_t *parent, basic_block_t *bb)
 {
     char literal[MAX_TOKEN_LEN];
@@ -914,6 +923,7 @@ void read_lvalue(lvalue_t *lvalue,
                  bool eval,
                  opcode_t op);
 
+///< 解析表达式 装指令
 /* Maintain a stack of expression values and operators, depending on next
  * operators' priority. Either apply it or operator on stack first.
  */
@@ -1165,6 +1175,9 @@ void read_expr(block_t *parent, basic_block_t **bb)
     opcode_t oper_stack[10];
     int oper_stack_idx = 0;
 
+    ///< 这些变量用于解析逻辑与/或运算。
+    ///< 对于逻辑与运算，测试每个操作数时，所有“假”条件的代码路径共用同一个基本块。
+    ///< 同样地，对于逻辑或运算，测试每个操作数时，所有“真”条件的代码路径也共用同一个基本块。
     /* These variables used for parsing logical-and/or operation.
      *
      * For the logical-and operation, the false condition code path for testing
@@ -1178,7 +1191,7 @@ void read_expr(block_t *parent, basic_block_t **bb)
     basic_block_t *log_and_shared_bb = bb_create(parent),
                   *log_or_shared_bb = bb_create(parent);
 
-    read_expr_operand(parent, bb);
+    read_expr_operand(parent, bb);          ///< 解析表达式 装指令
 
     opcode_t op = get_operator();
     if (op == OP_generic || op == OP_ternary)
@@ -1223,20 +1236,20 @@ void read_expr(block_t *parent, basic_block_t **bb)
                 has_prev_log_op = true;
             } else if (prev_log_op == OP_log_and) {
                 /* For example: a && b || c
-                 * previous opcode: prev_log_op == OP_log_and
-                 * current opcode:  op == OP_log_or
-                 * current operand: b
+                 * previous opcode: prev_log_op == OP_log_and   前一个操作符：prev_log_op == OP_log_and
+                 * current opcode:  op == OP_log_or             当前操作符：op == OP_log_or
+                 * current operand: b                           当前操作数：b
                  *
                  * Finalize the logical-and operation and test the operand for
-                 * the following logical-or operation.
+                 * the following logical-or operation.    完成逻辑与操作，并测试该操作数以进行后续的逻辑或操作。
                  */
                 finalize_logical(prev_log_op, parent, bb, log_and_shared_bb);
                 log_and_shared_bb = bb_create(parent);
                 bb_connect(*bb, log_or_shared_bb, THEN);
                 read_logical(op, parent, bb);
 
-                /* Here are two cases to illustrate the following assignments
-                 * after finalizing the logical-and operation and testing the
+                /* Here are two cases to illustrate the following assignments    以下是两种情况，用于说明在完成逻辑与操作并测试
+                 * after finalizing the logical-and operation and testing the    操作数以进行后续逻辑或操作后，以下赋值的含义。
                  * operand for the following logical-or operation.
                  *
                  * 1. a && b || c
@@ -1245,7 +1258,7 @@ void read_expr(block_t *parent, basic_block_t **bb)
                  *    current opcode:  op == OP_log_or
                  *    current operand: b
                  *
-                 *    The current opcode should become the previous opcode,
+                 *    The current opcode should become the previous opcode,     当前操作符应该成为前一个操作符，而 pprev 操作符仍为 0。
                  * and the pprev opcode remains 0.
                  *
                  * 2. a || b && c || d
@@ -1254,14 +1267,14 @@ void read_expr(block_t *parent, basic_block_t **bb)
                  *    current opcode:  op == OP_log_or
                  *    current operand: b
                  *
-                 *    The previous opcode should inherit the pprev opcode, which
-                 * is equivalent to inheriting the current opcode because both
-                 * of pprev opcode and current opcode are logical-or operator.
+                 *    The previous opcode should inherit the pprev opcode, which  前一个操作符应该继承 pprev 操作符的值，
+                 * is equivalent to inheriting the current opcode because both    这在逻辑上等价于继承当前操作符，因为 pprev 操作符
+                 * of pprev opcode and current opcode are logical-or operator.    和当前操作符都是逻辑或操作符。
                  *
-                 *    Thus, pprev opcode is considered used and is cleared to 0.
+                 *    Thus, pprev opcode is considered used and is cleared to 0.   因此，pprev 操作符被认为已被使用，并被重置为 0。
                  *
-                 * Eventually, the current opcode becomes the previous opcode
-                 * and pprev opcode is set to 0.
+                 * Eventually, the current opcode becomes the previous opcode     最终，当前操作符成为前一个操作符，而 pprev 操作符被设为 0。
+                 * and pprev opcode is set to 0. 
                  * */
                 prev_log_op = op;
                 pprev_log_op = 0;
@@ -1285,6 +1298,7 @@ void read_expr(block_t *parent, basic_block_t **bb)
         } else {
             while (has_prev_log_op &&
                    (get_operator_prio(op) < get_operator_prio(prev_log_op))) {
+                /* 当遇到优先级更低的运算符时，结束当前的逻辑与/或运算，并为下一个逻辑与/或运算符创建一个新的基本块。 */
                 /* When encountering an operator with lower priority, conclude
                  * the current logical-and/or and create a new basic block for
                  * next logical-and/or operator.
@@ -1634,6 +1648,12 @@ void read_logical(opcode_t op, block_t *parent, basic_block_t **bb)
     bb[0] = new_bb;
 }
 
+/**
+ * finalize_logical() 是 shecc 里把 逻辑与 (&&) / 逻辑或 (||) 的最后一段控制流 “收尾” 的函数：
+ * 为尚未处理完的最后一个操作数 补上 比较-分支 指令；
+ * 在两个出口块里分别 生成常量 0/1 并写入同一个临时变量；
+ * 把临时变量压回操作数栈，并把当前基本块指针更新到 汇合块。
+ */
 void finalize_logical(opcode_t op,
                       block_t *parent,
                       basic_block_t **bb,
@@ -1770,6 +1790,12 @@ void finalize_logical(opcode_t op,
     bb[0] = end;
 }
 
+/**
+ * ternary_operation - 三元运算符
+ * read_ternary_operation 把 cond ? e1 : e2 翻译成
+ * 一个条件分支 + 两个赋值块 + 一个汇合块，
+ * 最终生成一个 单一 SSA 变量 承载三目表达式的结果，并压回栈供后续使用。
+ */
 void read_ternary_operation(block_t *parent, basic_block_t **bb)
 {
     var_t *vd, *rs1;
@@ -1788,22 +1814,22 @@ void read_ternary_operation(block_t *parent, basic_block_t **bb)
     bb_connect(else_, end_ternary, NEXT);
 
     /* true branch */
-    read_expr(parent, &then_);
+    read_expr(parent, &then_);          ///< 读取真分支的表达式
     bb_connect(*bb, then_, THEN);
 
-    if (!lex_accept(T_colon)) {
+    if (!lex_accept(T_colon)) {         ///< 读取冒号
         /* ternary operator in standard C needs three operands */
         /* TODO: Release dangling basic block */
         abort();
     }
 
-    rs1 = opstack_pop();
-    vd = require_var(parent);
-    gen_name_to(vd->var_name);
-    add_insn(parent, then_, OP_assign, vd, rs1, NULL, 0, NULL);
+    rs1 = opstack_pop();                ///< 弹出真分支的结果
+    vd = require_var(parent);           ///< 生成一个临时变量
+    gen_name_to(vd->var_name);          ///< 生成一个临时变量名
+    add_insn(parent, then_, OP_assign, vd, rs1, NULL, 0, NULL);     ///< 将true分支的结果赋值给临时变量
 
     /* false branch */
-    read_expr(parent, &else_);
+    read_expr(parent, &else_);          ///< 读取假分支的表达式
     bb_connect(*bb, else_, ELSE);
 
     rs1 = opstack_pop();
@@ -1811,7 +1837,7 @@ void read_ternary_operation(block_t *parent, basic_block_t **bb)
 
     vd->is_ternary_ret = true;
     opstack_push(vd);
-    bb[0] = end_ternary;
+    bb[0] = end_ternary;                ///< 更新基本块指针，指向三元运算的结束块 汇合
 }
 
 bool read_body_assignment(char *token,
@@ -2279,23 +2305,30 @@ basic_block_t *read_body_statement(block_t *parent, basic_block_t *bb)
     if (lex_peek(T_open_curly, NULL))
         return read_code_block(parent->func, parent->macro, parent, bb);
 
-    if (lex_accept(T_return)) {
+    if (lex_accept(T_return)) {                    ///< 返回
         /* return void */
-        if (lex_accept(T_semicolon)) {
+        if (lex_accept(T_semicolon)) {              ///< 分号 void返回
             add_insn(parent, bb, OP_return, NULL, NULL, NULL, 0, NULL);
-            bb_connect(bb, parent->func->exit, NEXT);
+            bb_connect(bb, parent->func->exit, NEXT);   ///< 连接到函数出口 func结构中的exit
             return NULL;
         }
 
-        /* get expression value into return value */
-        read_expr(parent, &bb);
-        read_ternary_operation(parent, &bb);
+        /**
+         * 表达式的求值结果被先压到“操作数栈”（opstack），而 副作用指令（store、call、volatile 访问等）
+         * 则被缓存到一个待处理队列，直到“真正需要结果”或“序列点”时才一次性刷到基本块。
+         * return 正是 C 语言中的一个序列点；因此：必须在生成 OP_return 之前，把缓存的所有副作用指令真正插入当前基本块。
+         * 否则这些副作用（例如写内存、函数调用）就可能在函数返回之后才被执行，导致运行时行为与源码语义不符。
+         * 这就是 perform_side_effect 的作用：保证所有副作用在控制流离开函数之前全部落实
+         */
+        /* get expression value into return value */     ///< 有返回值
+        read_expr(parent, &bb);                         ///< 读return中的表达式
+        read_ternary_operation(parent, &bb);            ///< 处理三元运算符
 
-        /* apply side effect before function return */
-        perform_side_effect(parent, bb);
-        lex_expect(T_semicolon);
+        /* apply side effect before function return */    
+        perform_side_effect(parent, bb);                ///< 关键步骤：把所有尚未落盘的 副作用指令 现在就插入当前基本块
+        lex_expect(T_semicolon);                        ///< 分号
 
-        rs1 = opstack_pop();
+        rs1 = opstack_pop();                            ///< 弹出操作数栈中的返回值
 
         add_insn(parent, bb, OP_return, NULL, rs1, NULL, 0, NULL);
         bb_connect(bb, parent->func->exit, NEXT);
@@ -2319,13 +2352,13 @@ basic_block_t *read_body_statement(block_t *parent, basic_block_t *bb)
         bb_connect(bb, then_, THEN);
         bb_connect(bb, else_, ELSE);
 
-        basic_block_t *then_body = read_body_statement(parent, then_);
+        basic_block_t *then_body = read_body_statement(parent, then_);  ///< 读取if分支的主体
         basic_block_t *then_next_ = NULL;
         if (then_body) {
             then_next_ = bb_create(parent);
             bb_connect(then_body, then_next_, NEXT);
         }
-        /* if we have an "else" block, jump to finish */
+        /* if we have an "else" block, jump to finish */        ///< else分支
         if (lex_accept(T_else)) {
             basic_block_t *else_body = read_body_statement(parent, else_);
             basic_block_t *else_next_ = NULL;
@@ -2367,7 +2400,7 @@ basic_block_t *read_body_statement(block_t *parent, basic_block_t *bb)
         basic_block_t *cond = bb_create(parent);
         cond = bb;
         lex_expect(T_open_bracket);
-        read_expr(parent, &bb);
+        read_expr(parent, &bb);             ///< 读取while括号条件中的表达式
         lex_expect(T_close_bracket);
 
         vd = opstack_pop();
@@ -2796,13 +2829,13 @@ void var_add_killed_bb(var_t *var, basic_block_t *bb);
 
 void read_func_body(func_t *func)
 {
-    block_t *blk = add_block(NULL, func, NULL);
-    func->bbs = bb_create(blk);
-    func->exit = bb_create(blk);
+    block_t *blk = add_block(NULL, func, NULL);   ///< 给这个func创建一个block block中ver表和block属于哪个func
+    func->bbs = bb_create(blk);                 ///< 给func创建basic_block_t
+    func->exit = bb_create(blk);                ///< 创建函数退出basic_block_t
 
-    for (int i = 0; i < func->num_params; i++) {
+    for (int i = 0; i < func->num_params; i++) {    ///< 处理函数参数
         /* arguments */
-        add_symbol(func->bbs, &func->param_defs[i]);
+        add_symbol(func->bbs, &func->param_defs[i]);      
         func->param_defs[i].base = &func->param_defs[i];
         var_add_killed_bb(&func->param_defs[i], func->bbs);
     }
@@ -2820,7 +2853,7 @@ void read_global_decl(block_t *block)
     /* new function, or variables under parent */
     read_full_var_decl(var, 0, 0);
 
-    if (lex_peek(T_open_bracket, NULL)) {                 ///< 与我CParser::FunctionOrIdentifier结构相同.  '(' is function
+    if (lex_peek(T_open_bracket, NULL)) {                 ///< 函数 与我CParser::FunctionOrIdentifier结构相同.  '(' is function
         /* function */
         func_t *func = add_func(var->var_name, false);
         memcpy(&func->return_def, var, sizeof(var_t));

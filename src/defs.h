@@ -308,23 +308,23 @@ struct var {
     bool is_func;
     bool is_global;
     int array_size;
-    int offset;   /* offset from stack or frame, index 0 is reserved */
-    int init_val; /* for global initialization */
-    int liveness; /* live range */
-    int in_loop;
-    struct var *base;
-    int subscript;
-    struct var *subscripts[64];
-    int subscripts_idx;
-    rename_t rename;
-    ref_block_list_t ref_block_list; /* blocks which kill variable */
-    use_chain_t *users_head;
+    int offset;   /* offset from stack or frame, index 0 is reserved */  ///< 变量在栈帧或全局区中的字节偏移；0 号保留（例如返回地址）。
+    int init_val; /* for global initialization */  ///< 仅对全局变量有效：源码给出的整型初值，用于生成 .data 段。
+    int liveness; /* live range */                  ///< 变量的活跃范围，表示该变量在编译器优化阶段的使用情况。
+    int in_loop;                                    ///< 深度计数：所在循环嵌套层数，0 表示不在循环内。
+    struct var *base;                               ///< 指向“基变量”：当该变量是数组元素或指针解引用结果时，指向原数组/指针变量。
+    int subscript;                    ///< 数组下标或指针偏移量，表示该变量在数组或指针中的位置。  如果是数组元素，记录其下标常量；否则为 -1。
+    struct var *subscripts[64];       ///< 数组下标变量列表，记录该变量的所有下标变量（如果是数组元素）。数组各维具体元素（或别名）的指针表；最多支持 64 维。
+    int subscripts_idx;               ///< 下标变量列表的索引，表示当前有多少个下标变量。当前已填充的 subscripts 表索引。
+    rename_t rename;                  ///< 重命名信息，记录变量的重命名历史和计数。用于静态单赋值（SSA）形式的优化。SSA 重命名信息：保存 φ 函数引入的新版本号。
+    ref_block_list_t ref_block_list; /* blocks which kill variable */  ///< 链表，记录“杀死”该变量的基本块（def 点或 φ 节点）。
+    use_chain_t *users_head;                    ///< 该变量所有使用点的链表头，用于构造 SSA 的 use-def 链。
     use_chain_t *users_tail;
-    struct insn *last_assign;
-    int consumed;
-    bool is_ternary_ret;
-    bool is_logical_ret;
-    bool is_const; /* whether a constant representaion or not */
+    struct insn *last_assign;           ///< 指向最后一条给此变量赋值的中间代码指令，用于优化和活跃性分析。
+    int consumed;                       ///< 该变量在当前基本块内被消费的次数，用于优化和活跃性分析。
+    bool is_ternary_ret;                ///< 是否为三元表达式的返回值，表示该变量是否是三元运算符的结果。
+    bool is_logical_ret;                ///< 是否为逻辑运算的返回值，表示该变量是否是逻辑与或逻辑或运算的结果。
+    bool is_const; /* whether a constant representaion or not */  ///< 是否为常量表示，表示该变量是否是一个常量值。
 };
 
 /**
@@ -345,6 +345,24 @@ typedef struct func func_t;
 
 /**
  * 变量作用域
+ * int x = 1;          // 全局作用域（parent = NULL）
+ * void foo() {
+ *     int y = 2;      // 块A（parent指向全局）
+ *     if (y > 0) {
+ *         int z = 3;  // 块B（parent指向块A）
+ *     }
+ * }
+ * 
+ * 变量属于某函数
+ * func_t *func = define_function("foo"); define_function伪代码
+ * struct block *body = create_block();
+ * body->func = func;  // 标记该块属于函数 foo
+ * 
+ * 变量属于某宏
+ * macro_t *m = define_macro("MAX");  define_macro伪代码
+ * struct block *expansion = expand_macro(m);
+ * expansion->macro = m;  // 标记块来自宏 MAX
+ * 
  */
 /* block definition */
 struct block {
@@ -509,6 +527,44 @@ typedef struct {
  * 无分支：块内无跳转、循环或条件语句（仅最后一条指令可以是分支指令）。
  * 
  * Basic Block 是编译器优化的原子单位，通过简化控制流复杂性，为数据流分析、指令调度和代码生成提供高效的基础结构。
+ * 
+ * Immediate Dominator（直接支配节点）就是“离当前基本块最近的上级总管”：
+ * 从函数入口到当前块的所有路径都必须经过它，而再往上就不一定了。
+ * 
+ * φ（phi）函数是 SSA 形式里的“汇编级三目运算符”——当控制流从多条路径汇入同一块时，
+ * 它根据“从哪条边来”选出正确的变量版本。
+ * if (cond) x = 1; else x = 2;
+ * y = x + 3;          // 这里到底用哪个 x ?
+ * SSA 通过引入 φ 函数 解决冲突：
+ * 在汇合块里创建一个 新变量 x3 = φ(x1, x2)
+ * 运行时根据 实际从哪条边跳过来 选 x1 或 x2 作为 x3 的值。
+ * 
+ * 支配边界（Dominance Frontier）
+ * DF(n) 表示“n 的控制力到此为止”的汇合点；
+ * 换句话说，n 的变量作用域第一次出现分支合并的地方。
+ * 用途
+ * 插入 φ 函数：若变量在 n 处被定义，则必须在 DF(n) 里的每个节点插入 φ 函数（SSA）。
+ * 代码移动：只有放在 n 或支配 n 的节点 中的计算，才不会被不必要的 φ 干扰。
+ * 
+ *  [Entry]
+         │
+         ▼
+       [A]
+      ┌─┴─┐
+      │   │
+      ▼   ▼
+    [B]   [C]
+      │   │
+      └─▲─┘
+        │
+       [D]
+         │
+         ▼
+      [Exit]
+ * 
+ * 在上图中，支配边界 DF(A) = {B, C}，因为 A 支配 B 和 C，但不支配 D。
+ * 逆支配边界（Reverse Dominance Frontier）
+ * RDF(D) 是 DF(D) = {B, C}
  */
 struct basic_block {
     insn_list_t insn_list;       ///< 原始指令链表 中间表示
@@ -549,6 +605,9 @@ struct basic_block {
     int elf_offset;         ///< ELF 偏移量（用于代码生成时的符号定位）
 };
 
+/**
+ * 
+ */
 struct ref_block {
     basic_block_t *bb;
     struct ref_block *next;

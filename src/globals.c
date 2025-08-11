@@ -935,7 +935,7 @@ void add_symbol(basic_block_t *bb, var_t *var)
     if (!bb)
         return;
     symbol_t *sym;
-    for (sym = bb->symbol_list.head; sym; sym = sym->next) {
+    for (sym = bb->symbol_list.head; sym; sym = sym->next) {    ///< 遍历符号表 next为空 sym判断不成立 for退出
         if (sym->var == var)
             return;
     }

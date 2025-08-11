@@ -491,12 +491,12 @@ void var_add_killed_bb(var_t *var, basic_block_t *bb)
         }
     }
     if (found)
-        return;
+        return;                                         ///< 找到就返回
 
-    ref = calloc(1, sizeof(ref_block_t));
+    ref = calloc(1, sizeof(ref_block_t));       ///< 找不到就创建一个引用块
     ref->bb = bb;
     if (!var->ref_block_list.head)
-        var->ref_block_list.head = ref;
+        var->ref_block_list.head = ref;         ///< 链表链接关系处理
     else
         var->ref_block_list.tail->next = ref;
 
@@ -1209,14 +1209,16 @@ void dump_dom(char name[])
 
 void ssa_build(void)
 {
-    build_rpo();
-    build_idom();
-    build_dom();
-    build_df();
+    build_rpo();     ///< RPO 是 reverse postorder traversal逆后序遍历，用來計算支配節點集合
+    build_idom();    ///< 找出每個基本區塊的 immediate dominator(IDOM)。透過剛才 build_rpo 建立的 RPO 的順序可以用更快速的方式
+                     ///< 找到 IDOM，因為依照 RPO 的順序處理某個節點時，已經先存取過該節點的所有前任節點
+    build_dom();     ///< 就是透過 build_idom 所建立的 IDOM 連結建立 dominator tree。使用 preorder 走訪方式
+                     ///< 執行 bb_build_dom。經由 dom_connect(curr->idom, curr) 來連結 curr 和其 IDOM 節點。
+    build_df();      ///< 建立支配邊界 DF(dominance frontier)。
 
-    solve_globals();
-    solve_phi_insertion();
-    solve_phi_params();
+    solve_globals();  ///< solve_globals 透過 bb_solve_globals 分析每個 insn 所使用的變數 变量
+    solve_phi_insertion();    ///< 入 phi 函式
+    solve_phi_params();       ///< 以版本號碼重新命名變數。
 
 #ifdef __SHECC__
 #else
@@ -1229,6 +1231,7 @@ void ssa_build(void)
     unwind_phi();
 }
 
+///< CSE(common subexpression elimination) 优化 公共子表达式消除
 /* Common Subexpression Elimination (CSE) */
 /* TODO: release detached insns node */
 bool cse(insn_t *insn, basic_block_t *bb)
@@ -1379,6 +1382,7 @@ bool eval_const_arithmetic(insn_t *insn)
     return true;
 }
 
+///< constant folding 是吗???
 bool const_folding(insn_t *insn)
 {
     if (mark_const(insn))
