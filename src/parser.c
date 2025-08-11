@@ -2859,7 +2859,7 @@ void read_global_decl(block_t *block)
         memcpy(&func->return_def, var, sizeof(var_t));
         block->locals.size--;
 
-        read_parameter_list_decl(func, 0);
+        read_parameter_list_decl(func, 0);              ///< 解析函数参数
 
         if (lex_peek(T_open_curly, NULL)) {
             read_func_body(func);

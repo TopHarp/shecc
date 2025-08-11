@@ -135,6 +135,14 @@ basic_block_t *intersect(basic_block_t *i, basic_block_t *j)
     return i;
 }
 
+/* 寻找每个基本块的直接支配者以构建支配树。
+ *
+ * 构建支配树后，我们可以根据活跃变量分析和可达性分析进行更高级的优化，例如公共子表达式消除、循环优化或死代码消除。
+ *
+ * 参考文献:
+ *   Cooper, Keith D.; Harvey, Timothy J.; Kennedy, Ken (2001).
+ *   "A Simple, Fast Dominance Algorithm"
+ */
 /* Find the immediate dominator of each basic block to build the dominator tree.
  *
  * Once the dominator tree is built, we can perform the more advanced
